@@ -1,0 +1,11 @@
+registries:
+  - type: standard
+    ref: v{{ aqua_registry_version }}
+packages:
+  - name: hashicorp/terraform@v{{ terraform_version }}
+  - name: terraform-linters/tflint@v{{ tflint_version }}
+  - name: aquasecurity/trivy@v{{ trivy_version }}
+  - name: reviewdog/reviewdog@v{{ reviewdog_version }}
+  - name: terraform-docs/terraform-docs@v{{ terraform_docs_version }}
+  - name: suzuki-shunsuke/github-comment@v{{ github_comment_version }}
+  - name: int128/ghcp@v{{ ghcp_version }}

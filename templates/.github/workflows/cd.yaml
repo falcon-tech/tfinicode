@@ -1,0 +1,91 @@
+name: CD
+
+on:
+  pull_request:
+    branches: main
+    types: closed
+
+concurrency:
+  group: {% raw %}${{ github.workflow }}-${{ github.ref }}{% endraw %}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  setup:
+    name: Set up
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      targets: {% raw %}${{ steps.list-targets.outputs.targets }}{% endraw %}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        uses: aquaproj/aqua-installer@v4.0.2
+        with:
+          aqua_version: v2.53.9
+
+      - name: Get changed working directory
+        uses: suzuki-shunsuke/tfaction/list-targets@v1.19.0
+        id: list-targets
+
+  apply:
+    name: Apply ({% raw %}${{ matrix.target.target }}{% endraw %})
+    needs: setup
+    if: join(fromJSON(needs.setup.outputs.targets), '') != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      TFACTION_TARGET: {% raw %}${{ matrix.target.target }}{% endraw %}
+      TFACTION_WORKING_DIR: {% raw %}${{ matrix.target.working_directory }}{% endraw %}
+      TFACTION_JOB_TYPE: {% raw %}${{ matrix.target.job_type }}{% endraw %}
+      TFACTION_IS_APPLY: true
+    strategy:
+      fail-fast: false
+      matrix:
+        target: {% raw %}${{ fromJSON(needs.setup.outputs.targets) }}{% endraw %}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        uses: aquaproj/aqua-installer@v4.0.2
+        with:
+          aqua_version: v2.53.9
+
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: {% raw %}${{ secrets.XXXXX_TFACTION_APPID }}{% endraw %}
+          private-key: {% raw %}${{ secrets.XXXX_TFACTION_PRIVATEKEY }}{% endraw %}
+
+      - name: Set up
+        uses: suzuki-shunsuke/tfaction/setup@v1.19.0
+        with:
+          github_token: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+        env:
+          GITHUB_TOKEN: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+
+      - name: Apply
+        uses: suzuki-shunsuke/tfaction/apply@v1.19.0
+        with:
+          github_token: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+
+      - name: Follow up PR
+        uses: suzuki-shunsuke/tfaction/create-follow-up-pr@v1.19.0
+        if: failure()
+        with:
+          github_token: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}

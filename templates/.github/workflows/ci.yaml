@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  pull_request:
+    branches: main
+
+concurrency:
+  group: {% raw %}${{ github.workflow }}-${{ github.ref }}{% endraw %}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TRIVY_CONFIG: {% raw %}${{ github.workspace }}{% endraw %}/trivy.yaml
+  TRIVY_IGNOREFILE: {% raw %}${{ github.workspace }}{% endraw %}/.trivyignore
+
+jobs:
+  setup:
+    name: Set up
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      targets: {% raw %}${{ steps.list-targets.outputs.targets }}{% endraw %}
+      modules: {% raw %}${{ steps.list-targets.outputs.modules }}{% endraw %}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        uses: aquaproj/aqua-installer@v{{ aqua_installer_version }}
+        with:
+          aqua_version: v{{ aqua_version }}
+
+      - name: Get changed working directory
+        uses: suzuki-shunsuke/tfaction/list-targets@v{{ tfaction_version }}
+        id: list-targets
+
+  test-module:
+    name: Test module ({% raw %}${{ matrix.target }}{% endraw %})
+    needs: setup
+    if: join(fromJSON(needs.setup.outputs.modules), '') != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+    env:
+      TFACTION_TARGET: {% raw %}${{ matrix.target }}{% endraw %}
+      TFLINT_CONFIG_FILE: {% raw %}${{ github.workspace }}{% endraw %}/modules/.tflint.hcl
+    strategy:
+      fail-fast: true
+      matrix:
+        target: {% raw %}${{ fromJSON(needs.setup.outputs.modules) }}{% endraw %}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        uses: aquaproj/aqua-installer@v{{ aqua_installer_version }}
+        with:
+          aqua_version: v{{ aqua_version }}
+
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: {% raw %}${{ secrets.XXXX_TFACTION_APPID }}{% endraw %}
+          private-key: {% raw %}${{ secrets.XXXX_TFACTION_PRIVATEKEY }}{% endraw %}
+
+      - name: Test(module)
+        uses: suzuki-shunsuke/tfaction/test-module@v{{ tfaction_version }}
+        with:
+          github_token: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+
+  plan:
+    name: Plan ({% raw %}${{ matrix.target.target }}{% endraw %})
+    needs: setup
+    if: join(fromJSON(needs.setup.outputs.targets), '') != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      TFACTION_TARGET: {% raw %}${{ matrix.target.target }}{% endraw %}
+      TFACTION_WORKING_DIR: {% raw %}${{ matrix.target.working_directory }}{% endraw %}
+      TFACTION_JOB_TYPE: {% raw %}${{ matrix.target.job_type }}{% endraw %}
+      TFLINT_CONFIG_FILE: {% raw %}${{ github.workspace }}{% endraw %}/environments/.tflint.hcl
+    strategy:
+      fail-fast: false
+      matrix:
+        target: {% raw %}${{ fromJSON(needs.setup.outputs.targets) }}{% endraw %}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        uses: aquaproj/aqua-installer@v{{ aqua_installer_version }}
+        with:
+          aqua_version: v{{ aqua_version }}
+
+      - name: Generate token
+        id: generate_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: {% raw %}${{ secrets.XXXX_TFACTION_APPID }}{% endraw %}
+          private-key: {% raw %}${{ secrets.XXXX_TFACTION_PRIVATEKEY }}{% endraw %}
+
+      - name: Set up
+        uses: suzuki-shunsuke/tfaction/setup@v{{ tfaction_version }}
+        with:
+          github_token: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+        env:
+          GITHUB_TOKEN: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+
+      - name: Test
+        uses: suzuki-shunsuke/tfaction/test@v{{ tfaction_version }}
+        with:
+          github_token: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+        env:
+          GITHUB_TOKEN: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+
+      - name: Plan
+        uses: suzuki-shunsuke/tfaction/plan@v{{ tfaction_version }}
+        with:
+          github_token: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
+        env:
+          GITHUB_TOKEN: {% raw %}${{ steps.generate_token.outputs.token }}{% endraw %}
