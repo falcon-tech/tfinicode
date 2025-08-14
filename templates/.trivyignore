@@ -1,0 +1,8 @@
+# CRITICAL
+## No Public Egress Sgr
+## https://avd.aquasec.com/misconfig/avd-aws-0104
+AVD-AWS-0104
+
+## Network ACL rule allows access using ALL ports
+## https://avd.aquasec.com/misconfig/aws-vpc-no-excessive-port-access
+AVD-AWS-0102
